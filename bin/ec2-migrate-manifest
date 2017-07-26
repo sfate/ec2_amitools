@@ -1,0 +1,6 @@
+#!/usr/bin/env ruby
+
+require "bundler/setup"
+require "ec2_amitools"
+
+load 'ec2/amitools/migratemanifest.rb'
