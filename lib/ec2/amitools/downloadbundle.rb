@@ -156,6 +156,6 @@ end
 
 #------------------------------------------------------------------------------#
 # Script entry point. Execute only if this file is being executed.
-if __FILE__ == $0
+if __FILE__ == $0 || $0.match(/bin\/ec2-download-bundle/)
   BundleDownloader.new().run(DownloadBundleParameters)
 end

@@ -10,8 +10,8 @@ Gem::Specification.new do |spec|
   spec.email         = ["alexey.bobyrev@gmail.com"]
   spec.license       = "Amazon Software License"
 
-  spec.summary       = %q{AWS: EC2 AMI Tools}
-  spec.description   = %q{ec2_amitools provided by Amazon packed into a gem}
+  spec.summary       = "ec2-ami-tools-#{EC2::AMITools::VERSION_TOOLS}"
+  spec.description   = "#{spec.summary} by Amazon packed into a gem"
   spec.homepage      = "http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/set-up-ami-tools.html"
 
   if spec.respond_to?(:metadata=)
