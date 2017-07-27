@@ -33,7 +33,7 @@ module EC2
         LEGACY_FSTAB  = EC2::Platform::Linux::Fstab::LEGACY
         BASE_UTILS = [ 'modprobe', 'mount', 'umount', 'dd' ]
         PART_UTILS = [ 'dmsetup', 'kpartx', 'losetup' ]
-        CHROOT_UTILS = [ 'grub' ]
+        CHROOT_UTILS = [ 'grub', 'grub2-install' ]
 
         #---------------------------------------------------------------------#
 
@@ -66,6 +66,7 @@ module EC2
           @fstab = nil
           @conf = grub_config
           @warnings = Array.new
+          @chroot_util = get_chroot_util
 
           self.verify_runtime(BASE_UTILS)
           self.set_partition_type(part_type)
@@ -201,11 +202,24 @@ module EC2
         def check_deps(part_type)
             if part_type == EC2::Platform::PartitionType::MBR
               self.verify_runtime([ 'parted' ])
-              self.verify_runtime(CHROOT_UTILS, @volume)
             elsif part_type == EC2::Platform::PartitionType::GPT
               self.verify_runtime([ 'sgdisk' ])
-              self.verify_runtime(CHROOT_UTILS, @volume)
             end
+        end
+
+        def get_chroot_util
+          paths = ENV['PATH'].split(File::PATH_SEPARATOR)
+          paths.map! { |path| File.join(@volume, path) } if @volume
+
+          chroot_util = CHROOT_UTILS.find do |util|
+            paths.any? { |dir| File.executable?(File.join(dir, util)) }
+          end
+
+          if chroot_util.nil?
+            raise FatalError.new("Required utility '%s' not found in PATH - is it installed?" % CHROOT_UTILS.join(' or '))
+          else
+            chroot_util
+          end
         end
 
         #---------------------------------------------------------------------#
@@ -564,8 +578,13 @@ module EC2
             # We're now ready to install GRUB.
             case @part_type
             when EC2::Platform::PartitionType::MBR
-              cmd = 'device (hd0) %s\nroot (hd0,0)\nsetup (hd0)' % @diskdev
-              execute('echo -e "%s" | grub --device-map=/dev/null --batch' % cmd, IMG_MNT)
+              if @chroot_util == 'grub'
+                cmd = 'device (hd0) %s\nroot (hd0,0)\nsetup (hd0)' % @diskdev
+                execute('echo -e "%s" | grub --device-map=/dev/null --batch' % cmd, IMG_MNT)
+              else
+                cmd = 'grub2-install "%s"' % @diskdev
+                execute(cmd, IMG_MNT)
+              end
             when EC2::Platform::PartitionType::GPT
               case @fstype
               when /ext[234]/
@@ -576,51 +595,60 @@ module EC2
                 raise RuntimeError, 'File system type %s unsupported' % [@fstype]
               end
 
-              file = File.join(IMG_MNT, file)
-              size = (File.size(file) + 511)/512
-              head = 2048 # start of the BIOS Boot Partition
-              cmd = 'dd if=%s of=%s seek=%s conv=fsync status=noxfer' % [file, @diskdev, head]
-              execute(cmd)
-              cmd =  'device (hd0) %s\n' % @diskdev
-              cmd += 'root (hd0,0)\n'
-              cmd += 'install /boot/grub/stage1 (hd0) (hd0)%s+%s ' % [head, size]
-              cmd += 'p (hd0,0)/boot/grub/stage2 /boot/grub/grub.conf'
-              execute('echo -e "%s" | grub --device-map=/dev/null --batch' % cmd, IMG_MNT)
+              if @chroot_util == 'grub'
+                file = File.join(IMG_MNT, file)
+                size = (File.size(file) + 511)/512
+                head = 2048 # start of the BIOS Boot Partition
+                cmd = 'dd if=%s of=%s seek=%s conv=fsync status=noxfer' % [file, @diskdev, head]
+                execute(cmd)
+                cmd =  'device (hd0) %s\n' % @diskdev
+                cmd += 'root (hd0,0)\n'
+                cmd += 'install /boot/grub/stage1 (hd0) (hd0)%s+%s ' % [head, size]
+                cmd += 'p (hd0,0)/boot/grub/stage2 /boot/grub/grub.conf'
+                execute('echo -e "%s" | grub --device-map=/dev/null --batch' % cmd, IMG_MNT)
+              else
+                cmd = 'grub2-install "%s"' % @diskdev
+                execute(cmd, IMG_MNT)
+              end
             else
               raise RuntimeError, 'Unknown partition table type %s' % @part_type
             end
 
-            # Check for reasonable kernel parameters
-            if @conf # user-supplied
-              src = Pathname(@conf).realpath.to_s
-              puts "Using user supplied grub config #{src}"
-              check_kernel_parameters(@conf)
-
-              dst_dir = File.join(IMG_MNT, '/boot/grub')
-              FileUtils.mkdir_p(dst_dir) unless File.exists?(dst_dir)
-
-              menulst = File.join(dst_dir, '/menu.lst')
-              # Copy the user supplied grub-config over any default ones
-              FileUtils.copy_entry(src, menulst, remove_destination=true)
-
-              grubconf = File.join(dst_dir, '/grub.conf')
-              File.delete(grubconf) unless not File.exists?(grubconf)
-              File.symlink('menu.lst', grubconf)
-              @conf = menulst
-            else
-              default_confs = [File.join(IMG_MNT, '/boot/grub/grub.conf'),
-                               File.join(IMG_MNT, '/boot/grub/menu.lst')]
-              @conf = default_confs.find { |file| File.file?(file) }
-              if @conf
-                puts "Using default grub config"
+            if @chroot_util == 'grub'
+              # Check for reasonable kernel parameters
+              if @conf # user-supplied
+                src = Pathname(@conf).realpath.to_s
+                puts "Using user supplied grub config #{src}"
                 check_kernel_parameters(@conf)
-              else
-                STDERR.puts('WARNING: No GRUB config found. The resulting image may not boot')
-              end
-            end
 
-            # Finally, tweak grub.conf to ensure we can boot.
-            adjustconf(@conf)
+                dst_dir = File.join(IMG_MNT, '/boot/grub')
+                FileUtils.mkdir_p(dst_dir) unless File.exists?(dst_dir)
+
+                menulst = File.join(dst_dir, '/menu.lst')
+                # Copy the user supplied grub-config over any default ones
+                FileUtils.copy_entry(src, menulst, remove_destination=true)
+
+                grubconf = File.join(dst_dir, '/grub.conf')
+                File.delete(grubconf) unless not File.exists?(grubconf)
+                File.symlink('menu.lst', grubconf)
+                @conf = menulst
+              else
+                default_confs = [File.join(IMG_MNT, '/boot/grub/grub.conf'),
+                                File.join(IMG_MNT, '/boot/grub/menu.lst')]
+                @conf = default_confs.find { |file| File.file?(file) }
+                if @conf
+                  puts "Using default grub config"
+                  check_kernel_parameters(@conf)
+                else
+                  STDERR.puts('WARNING: No GRUB config found. The resulting image may not boot')
+                end
+              end
+
+              # Finally, tweak grub.conf to ensure we can boot.
+              adjustconf(@conf)
+            else
+              execute('grub2-mkconfig --output=/boot/grub2/grub.cfg')
+            end
           ensure
             FileUtils.rm_f(hdap1)
             FileUtils.rm_f(mtabfile) if fixmtab
