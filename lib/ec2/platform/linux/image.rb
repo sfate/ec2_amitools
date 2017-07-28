@@ -667,7 +667,7 @@ module EC2
           raise FatalError.new("image already mounted") if mounted?(IMG_MNT)
           dirs = ['mnt', 'proc', 'sys', 'dev']
           if self.is_disk_image?
-            execute( 'mount -t %s %s %s' % [@fstype, @target, IMG_MNT] )
+            execute( 'mount -o nouuid -t %s %s %s' % [@fstype, @target, IMG_MNT] )
             dirs.each{|dir| FileUtils.mkdir_p( '%s/%s' % [IMG_MNT, dir])}
             make_special_devices
             execute( 'mount -o bind /proc %s/proc' % IMG_MNT )
