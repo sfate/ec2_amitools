@@ -16,11 +16,13 @@ module EC2
     module Base
       module Constants
         module Bundling
-          EC2_HOME = ENV["EC2_AMITOOL_HOME"] || ENV["EC2_HOME"]
-          EC2_X509_CERT = File.join(EC2_HOME.to_s, '/etc/ec2/amitools/cert-ec2.pem')
-          EC2_X509_GOV_CERT = File.join(EC2_HOME.to_s, '/etc/ec2/amitools/cert-ec2-gov.pem')
-          EC2_X509_CN_NORTH_1_CERT = File.join(EC2_HOME.to_s, '/etc/ec2/amitools/cert-ec2-cn-north-1.pem')
-          EC2_MAPPING_FILE = File.join(EC2_HOME.to_s, '/etc/ec2/amitools/mappings.csv')
+          BASE_DIR = __FILE__.to_s.gsub(/\/lib\/ec2.*/, '')
+
+          EC2_X509_CERT            = File.join(BASE_DIR, '/etc/ec2/amitools/cert-ec2.pem')
+          EC2_X509_GOV_CERT        = File.join(BASE_DIR, '/etc/ec2/amitools/cert-ec2-gov.pem')
+          EC2_X509_CN_NORTH_1_CERT = File.join(BASE_DIR, '/etc/ec2/amitools/cert-ec2-cn-north-1.pem')
+          EC2_MAPPING_FILE         = File.join(BASE_DIR, '/etc/ec2/amitools/mappings.csv')
+
           EC2_MAPPING_URL = 'https://ec2-downloads.s3.amazonaws.com/mappings.csv'
           DESTINATION = '/tmp'
         end

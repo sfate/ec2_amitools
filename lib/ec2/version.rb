@@ -3,6 +3,6 @@ require 'ec2/amitools/version'
 module EC2
   module AMITools
     VERSION_TOOLS = "#{EC2Version::PKG_VERSION}.#{EC2Version::PKG_RELEASE}".freeze
-    VERSION = "1.0.3"
+    VERSION = "1.0.8"
   end
 end
